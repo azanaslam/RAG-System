@@ -1,10 +1,7 @@
 import express from "express";
-import fs from "fs";
-import path from "path";
 import PDFParser from "pdf2json";
 import { MongoClient } from "mongodb";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import cors from "cors";
 import multer from "multer";
@@ -13,12 +10,14 @@ import cloudinary from "./config/cloudinary.js";
 
 dotenv.config();
 const app = express();
-app.use(express.json(), cors({
-  origin: "https://rag-system-ten.vercel.app",
-  methods: ["GET", "POST"],
-  allowedHeaders: ["Content-Type"],
-}));
-
+app.use(
+  express.json(),
+  cors({
+    origin: "https://rag-system-ten.vercel.app",
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type"],
+  })
+);
 
 // Cloudinary Storage
 const storage = new CloudinaryStorage({
@@ -31,77 +30,32 @@ const storage = new CloudinaryStorage({
 });
 const upload = multer({ storage });
 
-// __dirname fix for ESM
-// const __filename = fileURLToPath(import.meta.url);
-// const __dirname = path.dirname(__filename);
-
 // Clients
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const client = new MongoClient(process.env.MONGO_URI);
 
-// 📂 Upload & Process PDFs
-// app.post("/upload", async (_, res) => {
-//   try {
-//     const folderPath = path.join(__dirname, "papers");
-//     if (!fs.existsSync(folderPath)) return res.status(400).json({ error: "❌ Papers folder missing" });
-
-//     const files = fs.readdirSync(folderPath).filter(f => f.endsWith(".pdf"));
-//     if (!files.length) return res.status(400).json({ error: "❌ No PDFs found" });
-
-//     const embeddingModel = genAI.getGenerativeModel({ model: "text-embedding-004" });
-//     let processedCount = 0;
-
-//     for (const file of files) {
-//       try {
-//         const pdfParser = new PDFParser();
-//         const data = await new Promise((resolve, reject) => {
-//           pdfParser.on("pdfParser_dataReady", pdfData => {
-//             resolve(pdfData.Pages.map(p => p.Texts.map(t => decodeURIComponent(t.R[0].T)).join(" ")).join("\n"));
-//           });
-//           pdfParser.on("pdfParser_dataError", reject);
-//           pdfParser.loadPDF(path.join(folderPath, file));
-//         });
-
-//         const chunks = data.match(/.{1,1000}/g) || [];
-//         for (const chunk of chunks) {
-//           try {
-//             const { embedding } = await embeddingModel.embedContent(chunk);
-//             await client.db("test").collection("docs").insertOne({ file, text: chunk, vector: embedding.values });
-//           } catch (e) { console.error("❌ Embedding failed:", e); }
-//         }
-//         processedCount++;
-//       } catch (e) { console.error("❌ PDF processing error:", e); }
-//     }
-//     res.json({ success: true, message: `${processedCount} PDFs processed.` });
-//   } catch (e) { res.status(500).json({ error: e.message }); }
-// });
 // 📂 Upload PDF to Cloudinary and process it
 app.post("/upload", upload.single("file"), async (req, res) => {
   try {
     const fileUrl = req.file.path; // Cloudinary PDF URL
     console.log("☁️ Uploaded to Cloudinary:", fileUrl);
 
-    // Download PDF temporarily for parsing
-    const tempPath = "temp.pdf";
+    // Download PDF into memory (Buffer)
     const response = await fetch(fileUrl);
-    const buffer = await response.arrayBuffer();
-    fs.writeFileSync(tempPath, Buffer.from(buffer));
+    const buffer = Buffer.from(await response.arrayBuffer());
 
-    // Parse PDF
+    // Parse PDF directly from Buffer (no disk write)
     const pdfParser = new PDFParser();
     const data = await new Promise((resolve, reject) => {
       pdfParser.on("pdfParser_dataReady", (pdfData) => {
-        resolve(
-          pdfData.Pages.map((p) =>
-            p.Texts.map((t) => decodeURIComponent(t.R[0].T)).join(" ")
-          ).join("\n")
-        );
+        const text = pdfData.Pages.map((p) =>
+          p.Texts.map((t) => decodeURIComponent(t.R[0].T)).join(" ")
+        ).join("\n");
+        resolve(text);
       });
       pdfParser.on("pdfParser_dataError", reject);
-      pdfParser.loadPDF(tempPath);
+      pdfParser.parseBuffer(buffer); // 👈 no temp file
     });
-
-    fs.unlinkSync(tempPath); // temp file delete
 
     // Embeddings
     const embeddingModel = genAI.getGenerativeModel({ model: "text-embedding-004" });
@@ -136,15 +90,15 @@ app.post("/ask", async (req, res) => {
 
     const cosineSim = (a, b) => {
       const dot = a.reduce((sum, v, i) => sum + v * b[i], 0);
-      const mag = arr => Math.sqrt(arr.reduce((s, v) => s + v * v, 0));
+      const mag = (arr) => Math.sqrt(arr.reduce((s, v) => s + v * v, 0));
       return dot / (mag(a) * mag(b));
     };
 
     const topChunks = allChunks
-      .map(c => ({ ...c, score: cosineSim(qVector, c.vector) }))
+      .map((c) => ({ ...c, score: cosineSim(qVector, c.vector) }))
       .sort((a, b) => b.score - a.score)
       .slice(0, 10)
-      .map(c => c.text);
+      .map((c) => c.text);
 
     let context = "";
     for (const chunk of topChunks) {
@@ -154,7 +108,9 @@ app.post("/ask", async (req, res) => {
 
     if (context.length > 15000) {
       const summarizer = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-      context = (await summarizer.generateContent(`Summarize:\n${context}`)).response.text();
+      context = (
+        await summarizer.generateContent(`Summarize:\n${context}`)
+      ).response.text();
     }
 
     const chatModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
@@ -162,7 +118,9 @@ app.post("/ask", async (req, res) => {
     const answer = (await chatModel.generateContent(prompt)).response.text();
 
     res.json({ answer });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // 🚀 Start Server
