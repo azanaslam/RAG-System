@@ -214,7 +214,7 @@ import cors from "cors";
 dotenv.config();
 const app = express();
 app.use(express.json(), cors({
-  origin: "http://localhost:5173",
+  origin: "https://rag-system-ten.vercel.app",
   methods: ["GET", "POST"],
   allowedHeaders: ["Content-Type"],
 }));
