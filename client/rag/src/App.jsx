@@ -17,7 +17,7 @@ export default function App() {
     setQuestion("");
     setAiTyping(true);
     try {
-      const { data } = await axios.post("http://localhost:3000/ask", { question });
+      const { data } = await axios.post("https://rag-system-y67x.vercel.app/ask", { question });
       setMessages([...newMessages, { sender: "bot", text: data.answer }]);
     } catch (err) {
       setMessages([...newMessages, { sender: "bot", text: "Error: " + err.message }]);
