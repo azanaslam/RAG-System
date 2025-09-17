@@ -35,7 +35,7 @@ const uploadPDF = async () => {
 
   try {
     const { data } = await axios.post(
-      "https://your-backend-domain.com/upload",
+      "https://rag-system-y67x.vercel.app/upload",
       formData,
       { headers: { "Content-Type": "multipart/form-data" } }
     );
