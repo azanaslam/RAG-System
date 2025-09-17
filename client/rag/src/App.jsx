@@ -7,6 +7,8 @@ export default function App() {
   const [aiTyping, setAiTyping] = useState(false);
   const [darkMode, setDarkMode] = useState(true);
   const chatEndRef = useRef(null);
+  const [file, setFile] = useState(null);
+
 
   useEffect(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), [messages, aiTyping]);
 
@@ -25,6 +27,25 @@ export default function App() {
     setAiTyping(false);
   };
 
+  
+const uploadPDF = async () => {
+  if (!file) return alert("Select a PDF first!");
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const { data } = await axios.post(
+      "https://your-backend-domain.com/upload",
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } }
+    );
+    alert(data.message);
+  } catch (err) {
+    alert("Upload failed: " + err.message);
+  }
+};
+
+
   const theme = darkMode
     ? { page: "#0f111a", chat: "#1a1c2a", user: ["#3b82f6", "#fff"], bot: ["#2a2c3d", "#e0f2fe"], input: ["#1a1c2a", "#fff", "#3b3f55"], btn: ["#3b82f6", "#fff"] }
     : { page: "#f3f4f6", chat: "#fff", user: ["#3b82f6", "#fff"], bot: ["#e0f2fe", "#0369a1"], input: ["#fff", "#000", "#60a5fa"], btn: ["#3b82f6", "#fff"] };
@@ -36,6 +57,11 @@ export default function App() {
           {darkMode ? "Light Mode" : "Dark Mode"}
         </button>
       </div>
+      <div>
+    <input type="file" accept="application/pdf" onChange={e => setFile(e.target.files[0])} />
+    <button onClick={uploadPDF}>Upload PDF</button>
+  </div>
+);
 
       <div style={{ ...styles.chatBox, background: theme.chat }}>
         {messages.map((m, i) => (
