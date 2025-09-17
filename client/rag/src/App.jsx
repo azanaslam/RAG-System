@@ -4,29 +4,36 @@ import axios from "axios";
 export default function App() {
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState([]);
-  const [aiThinking, setAiThinking] = useState(false);
+  const [aiTyping, setAiTyping] = useState(false);
   const [darkMode, setDarkMode] = useState(true);
   const chatEndRef = useRef(null);
   const [file, setFile] = useState(null);
+  const [uploading, setUploading] = useState(false); // ✅ loader state
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, aiThinking]);
+  useEffect(
+    () => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }),
+    [messages, aiTyping]
+  );
 
   const askQuestion = async () => {
     if (!question.trim()) return;
     const newMessages = [...messages, { sender: "user", text: question }];
     setMessages(newMessages);
     setQuestion("");
-    setAiThinking(true);
-
+    setAiTyping(true);
     try {
-      const { data } = await axios.post("https://rag-system-y67x.vercel.app/ask", { question });
+      const { data } = await axios.post(
+        "https://rag-system-y67x.vercel.app/ask",
+        { question }
+      );
       setMessages([...newMessages, { sender: "bot", text: data.answer }]);
     } catch (err) {
-      setMessages([...newMessages, { sender: "bot", text: "⚠️ Error: " + err.message }]);
+      setMessages([
+        ...newMessages,
+        { sender: "bot", text: "Error: " + err.message },
+      ]);
     }
-    setAiThinking(false);
+    setAiTyping(false);
   };
 
   const uploadPDF = async () => {
@@ -35,14 +42,17 @@ export default function App() {
     formData.append("file", file);
 
     try {
+      setUploading(true); // ✅ loader start
       const { data } = await axios.post(
         "https://rag-system-y67x.vercel.app/upload",
         formData,
         { headers: { "Content-Type": "multipart/form-data" } }
       );
-      alert("✅ " + data.message);
+      alert(data.message);
     } catch (err) {
-      alert("❌ Upload failed: " + err.message);
+      alert("Upload failed: " + err.message);
+    } finally {
+      setUploading(false); // ✅ loader stop
     }
   };
 
@@ -66,21 +76,41 @@ export default function App() {
 
   return (
     <div style={{ ...styles.page, background: theme.page }}>
-      {/* Toggle Button */}
+      {/* Toggle Mode */}
       <div style={styles.toggleWrapper}>
         <button
           onClick={() => setDarkMode(!darkMode)}
-          style={{ ...styles.toggleBtn, background: theme.btn[0], color: theme.btn[1] }}
+          style={{
+            ...styles.toggleBtn,
+            background: theme.btn[0],
+            color: theme.btn[1],
+          }}
         >
-          {darkMode ? "🌙 Dark" : "☀️ Light"}
+          {darkMode ? "Light Mode" : "Dark Mode"}
         </button>
       </div>
 
-      {/* File Upload */}
-      <div style={styles.uploadWrapper}>
-        <input type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files[0])} />
-        <button onClick={uploadPDF} style={{ ...styles.askBtn, background: theme.btn[0], color: theme.btn[1] }}>
-          📂 Upload PDF
+      {/* Upload Section */}
+      <div style={styles.uploadBox}>
+        <input
+          type="file"
+          accept="application/pdf"
+          onChange={(e) => setFile(e.target.files[0])}
+        />
+        <button
+          onClick={uploadPDF}
+          disabled={uploading}
+          style={{
+            ...styles.uploadBtn,
+            background: uploading ? "#6b7280" : theme.btn[0],
+            color: theme.btn[1],
+          }}
+        >
+          {uploading ? (
+            <span style={styles.loader}></span>
+          ) : (
+            "Upload PDF"
+          )}
         </button>
       </div>
 
@@ -92,21 +122,25 @@ export default function App() {
             style={{
               ...styles.msg,
               alignSelf: m.sender === "user" ? "flex-end" : "flex-start",
-              background: m.sender === "user" ? theme.user[0] : theme.bot[0],
+              background:
+                m.sender === "user" ? theme.user[0] : theme.bot[0],
               color: m.sender === "user" ? theme.user[1] : theme.bot[1],
             }}
           >
             {m.text}
           </div>
         ))}
-
-        {/* AI Thinking Animation */}
-        {aiThinking && (
-          <div style={{ ...styles.msg, alignSelf: "flex-start", background: theme.bot[0], color: theme.bot[1], fontStyle: "italic" }}>
-            <span style={styles.thinkingWrapper}>
-              🤖 AI is thinking
-              <span style={styles.dots}></span>
-            </span>
+        {aiTyping && (
+          <div
+            style={{
+              ...styles.msg,
+              alignSelf: "flex-start",
+              background: theme.bot[0],
+              color: theme.bot[1],
+              fontStyle: "italic",
+            }}
+          >
+            🤔 Thinking<span style={styles.dots}></span>
           </div>
         )}
         <div ref={chatEndRef} />
@@ -126,38 +160,102 @@ export default function App() {
             border: `1px solid ${theme.input[2]}`,
           }}
         />
-        <button onClick={askQuestion} style={{ ...styles.askBtn, background: theme.btn[0], color: theme.btn[1] }}>
-          🚀 Ask
+        <button
+          onClick={askQuestion}
+          style={{
+            ...styles.askBtn,
+            background: theme.btn[0],
+            color: theme.btn[1],
+          }}
+        >
+          Ask
         </button>
       </div>
 
       {/* Animations */}
       <style>{`
-        @keyframes fadeIn { 
-          from { opacity:0; transform:translateY(5px);} 
-          to { opacity:1; transform:translateY(0);} 
-        }
-        @keyframes dotsBlink { 
-          0% { content: ''; } 
-          33% { content: '.'; } 
-          66% { content: '..'; } 
-          100% { content: '...'; } 
-        }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(5px);} to{opacity:1;transform:translateY(0);} }
+        @keyframes dotsBlink { 0%{content:'';}33%{content:'.';}66%{content:'..';}100%{content:'...';} }
+        @keyframes spin { from{transform:rotate(0deg);} to{transform:rotate(360deg);} }
       `}</style>
     </div>
   );
 }
 
 const styles = {
-  page: { minHeight: "100vh", display: "flex", flexDirection: "column", fontFamily: "Arial, sans-serif" },
-  toggleWrapper: { display: "flex", justifyContent: "flex-end", padding: "10px 20px" },
-  toggleBtn: { padding: "10px 20px", borderRadius: "12px", border: "none", cursor: "pointer", fontSize: ".95rem", fontWeight: 600 },
-  uploadWrapper: { display: "flex", gap: "10px", padding: "10px 20px" },
-  chatBox: { flex: 1, display: "flex", flexDirection: "column", padding: 20, gap: 12, overflowY: "auto" },
-  msg: { padding: "12px 20px", borderRadius: 20, maxWidth: "75%", wordBreak: "break-word", fontSize: ".95rem", animation: "fadeIn .3s ease" },
+  page: { minHeight: "100vh", display: "flex", flexDirection: "column" },
+  toggleWrapper: {
+    display: "flex",
+    justifyContent: "flex-end",
+    padding: "10px 20px",
+  },
+  toggleBtn: {
+    padding: "10px 20px",
+    borderRadius: "12px",
+    border: "none",
+    cursor: "pointer",
+    fontSize: ".95rem",
+    fontWeight: 600,
+  },
+  uploadBox: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "10px 20px",
+  },
+  uploadBtn: {
+    padding: "10px 20px",
+    borderRadius: "10px",
+    border: "none",
+    cursor: "pointer",
+    fontSize: ".9rem",
+    fontWeight: 600,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loader: {
+    width: "18px",
+    height: "18px",
+    border: "2px solid #fff",
+    borderTop: "2px solid transparent",
+    borderRadius: "50%",
+    animation: "spin 1s linear infinite",
+  },
+  chatBox: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    padding: 20,
+    gap: 12,
+    overflowY: "auto",
+  },
+  msg: {
+    padding: "12px 20px",
+    borderRadius: 20,
+    maxWidth: "75%",
+    wordBreak: "break-word",
+    fontSize: ".95rem",
+    animation: "fadeIn .3s ease",
+  },
   inputBox: { display: "flex", gap: 12, padding: "15px 20px" },
-  input: { flex: 1, padding: 14, borderRadius: 12, fontSize: "1rem", outline: "none" },
-  askBtn: { padding: "14px 25px", borderRadius: 12, border: "none", cursor: "pointer", fontSize: "1rem", transition: "0.3s" },
-  thinkingWrapper: { display: "flex", alignItems: "center", gap: "6px" },
-  dots: { display: "inline-block", marginLeft: 5, animation: "dotsBlink 1s infinite steps(3,end)" },
+  input: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 12,
+    fontSize: "1rem",
+    outline: "none",
+  },
+  askBtn: {
+    padding: "14px 25px",
+    borderRadius: 12,
+    border: "none",
+    cursor: "pointer",
+    fontSize: "1rem",
+  },
+  dots: {
+    display: "inline-block",
+    marginLeft: 5,
+    animation: "dotsBlink 1s infinite steps(3,end)",
+  },
 };
